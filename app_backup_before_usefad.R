@@ -1,0 +1,384 @@
+library(shiny)
+library(SimpleMating)
+
+required_objects <- c(
+  "pheno", "haplo.mat", "K", "crossPlan",
+  "map", "marker_eff", "Markers"
+)
+
+ui <- fluidPage(
+  
+  titlePanel("SimpleMating App"),
+  
+  sidebarLayout(
+    
+    sidebarPanel(
+      
+      fileInput("rds_file", "Upload SimpleMating RDS file", accept = ".rds"),
+      
+      uiOutput("analysis_ui"),
+      uiOutput("trait_ui"),
+      uiOutput("weights_ui"),
+      uiOutput("propsel_ui"),
+      uiOutput("method_ui"),
+      
+      actionButton("run_analysis", "Run Analysis")
+      
+    ),
+    
+    mainPanel(
+      
+      h3("Data Check"),
+      verbatimTextOutput("data_check"),
+      
+      h3("Selected Analysis"),
+      textOutput("selected_analysis"),
+      
+      h3("Selected Traits"),
+      textOutput("selected_traits"),
+      
+      h3("Weights Check"),
+      textOutput("weights_check"),
+      
+      h3("Results"),
+      tableOutput("results_table"),
+      
+      h3("Analysis Status"),
+      textOutput("analysis_status"),
+      
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  
+  uploaded_data <- reactive({
+    req(input$rds_file)
+    readRDS(input$rds_file$datapath)
+  })
+  
+  data_valid <- reactive({
+    data <- uploaded_data()
+    all(required_objects %in% names(data))
+  })
+  
+  trait_names <- reactive({
+    data <- uploaded_data()
+    setdiff(colnames(data$pheno), "Name")
+  })
+  
+  output$data_check <- renderPrint({
+    data <- uploaded_data()
+    found <- names(data)
+    missing <- setdiff(required_objects, found)
+    
+    cat("Objects found:\n")
+    print(found)
+    
+    cat("\nMissing required objects:\n")
+    if (length(missing) == 0) {
+      cat("None - data looks valid.\n")
+    } else {
+      print(missing)
+    }
+    
+    cat("\nAvailable traits:\n")
+    print(trait_names())
+  })
+  
+  output$analysis_ui <- renderUI({
+    req(data_valid())
+    
+    tagList(
+      selectInput(
+        "analysis_type",
+        "Analysis Type",
+        choices = c(
+          "MPV",
+          "TGV",
+          "Usefulness Additive",
+          "Usefulness Additive + Dominance"
+        )
+      ),
+      
+      radioButtons(
+        "trait_mode",
+        "Trait Mode",
+        choices = c("Single Trait", "Multi Trait")
+      )
+    )
+  })
+  
+  output$trait_ui <- renderUI({
+    req(data_valid())
+    req(input$trait_mode)
+    
+    traits <- trait_names()
+    
+    if (input$trait_mode == "Single Trait") {
+      selectInput("selected_traits", "Trait", choices = traits, selected = "SY")
+    } else {
+      selectInput(
+        "selected_traits",
+        "Traits",
+        choices = traits,
+        selected = c("DMD", "SY"),
+        multiple = TRUE
+      )
+    }
+  })
+  
+  output$weights_ui <- renderUI({
+    req(input$trait_mode)
+    
+    if (input$trait_mode != "Multi Trait") {
+      return(NULL)
+    }
+    
+    req(input$selected_traits)
+    
+    selected_traits <- input$selected_traits
+    default_weight <- round(1 / length(selected_traits), 3)
+    
+    tagList(
+      h4("Trait Weights"),
+      lapply(selected_traits, function(trait) {
+        numericInput(
+          inputId = paste0("weight_", trait),
+          label = paste(trait, "weight"),
+          value = default_weight,
+          min = 0,
+          max = 1,
+          step = 0.01
+        )
+      })
+    )
+  })
+  
+  output$propsel_ui <- renderUI({
+    
+    req(input$analysis_type)
+    
+    if (input$analysis_type %in% c(
+      "Usefulness Additive",
+      "Usefulness Additive + Dominance"
+    )) {
+      
+      numericInput(
+        "propSel",
+        "Proportion Selected",
+        value = 0.05,
+        min = 0.001,
+        max = 0.999,
+        step = 0.01
+      )
+      
+    }
+    
+  })
+  
+  output$method_ui <- renderUI({
+    
+    req(input$analysis_type)
+    
+    if (input$analysis_type == "Usefulness Additive + Dominance") {
+      
+      selectInput(
+        "method",
+        "Method",
+        choices = c("Phased", "NonPhased"),
+        selected = "Phased"
+      )
+      
+    }
+    
+  })
+  
+  selected_weights <- reactive({
+    req(input$trait_mode)
+    
+    if (input$trait_mode == "Single Trait") {
+      return(NULL)
+    }
+    
+    req(input$selected_traits)
+    
+    weights <- sapply(input$selected_traits, function(trait) {
+      input[[paste0("weight_", trait)]]
+    })
+    
+    as.numeric(weights)
+  })
+  
+  weights_valid <- reactive({
+    if (input$trait_mode == "Single Trait") {
+      return(TRUE)
+    }
+    
+    weights <- selected_weights()
+    
+    if (any(is.na(weights))) {
+      return(FALSE)
+    }
+    
+    abs(sum(weights) - 1) < 0.0001
+  })
+  
+  output$weights_check <- renderText({
+    req(input$trait_mode)
+    
+    if (input$trait_mode == "Single Trait") {
+      return("No weights needed for single-trait analysis.")
+    }
+    
+    weights <- selected_weights()
+    
+    paste0(
+      "Weight total: ",
+      round(sum(weights), 4),
+      ifelse(weights_valid(), " - OK", " - must equal 1")
+    )
+  })
+  
+  analysis_results <- eventReactive(input$run_analysis, {
+    req(data_valid())
+    req(input$analysis_type)
+    req(input$trait_mode)
+    req(input$selected_traits)
+    
+    validate(
+      need(weights_valid(), "For multi-trait analysis, weights must add up to 1.")
+    )
+    
+    data <- uploaded_data()
+    
+    if (input$analysis_type == "MPV") {
+      
+      if (input$trait_mode == "Single Trait") {
+        
+        Crit <- data.frame(
+          Id = data$pheno[, "Name"],
+          Criterion = data$pheno[, input$selected_traits]
+        )
+        
+        result <- getMPV(
+          MatePlan = data$crossPlan,
+          Criterion = Crit,
+          K = data$K
+        )
+        
+      } else {
+        
+        Crit <- data.frame(
+          Id = data$pheno[, "Name"],
+          data$pheno[, input$selected_traits, drop = FALSE]
+        )
+        
+        result <- getMPV(
+          MatePlan = data$crossPlan,
+          Criterion = Crit,
+          K = data$K,
+          Weights = selected_weights()
+        )
+      }
+      
+      return(result)
+    }
+    
+    if (input$analysis_type == "TGV") {
+      
+      if (input$trait_mode == "Single Trait") {
+        
+        trait <- input$selected_traits
+        
+        result <- getTGV(
+          MatePlan = data$crossPlan,
+          Markers = data$Markers,
+          addEff = data$marker_eff[, paste0(trait, "_add")],
+          domEff = data$marker_eff[, paste0(trait, "_dom")],
+          K = data$K
+        )
+        
+      } else {
+        
+        traits <- input$selected_traits
+        
+        result <- getTGV(
+          MatePlan = data$crossPlan,
+          Markers = data$Markers,
+          addEff = data$marker_eff[, paste0(traits, "_add"), drop = FALSE],
+          domEff = data$marker_eff[, paste0(traits, "_dom"), drop = FALSE],
+          K = data$K,
+          Weights = selected_weights()
+        )
+      }
+      
+      return(result)
+    }
+    
+    if (input$analysis_type == "Usefulness Additive") {
+      
+      Markers_02 <- data$Markers
+      Markers_02[Markers_02 == 1] <- NA
+      
+      if (input$trait_mode == "Single Trait") {
+        
+        trait <- input$selected_traits
+        
+        result <- getUsefA(
+          MatePlan = data$crossPlan,
+          Markers = Markers_02,
+          addEff = data$marker_eff[, paste0(trait, "_add")],
+          Map.In = data$map,
+          K = data$K,
+          propSel = input$propSel
+        )
+        
+      } else {
+        
+        traits <- input$selected_traits
+        
+        result <- getUsefA_mt(
+          MatePlan = data$crossPlan,
+          Markers = Markers_02,
+          addEff = data$marker_eff[, paste0(traits, "_add"), drop = FALSE],
+          Map.In = data$map,
+          K = data$K,
+          propSel = input$propSel,
+          Weights = selected_weights()
+        )
+      }
+      
+      return(result[[2]])
+    }
+    
+    data.frame(Message = "This analysis type is not connected yet.")
+  })
+  
+  output$selected_analysis <- renderText({
+    req(input$analysis_type)
+    req(input$trait_mode)
+    
+    paste(
+      "Selected analysis:",
+      input$analysis_type,
+      "| Trait mode:",
+      input$trait_mode
+    )
+  })
+  
+  output$selected_traits <- renderText({
+    req(input$selected_traits)
+    paste("Selected traits:", paste(input$selected_traits, collapse = ", "))
+  })
+  
+  output$analysis_status <- renderText({
+    "Ready"
+  })
+  
+  output$results_table <- renderTable({
+    head(analysis_results(), 20)
+  })
+}
+
+shinyApp(ui, server)
