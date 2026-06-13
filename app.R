@@ -54,7 +54,7 @@ ui <- fluidPage(
       
       actionButton("run_ranking", "Rank Parent Sets"),
       
-      downloadButton("download_ranking", "Download Ranked Parent Sets"),
+      downloadButton("download_ranking", "Download Ranked Parent Sets")
       
     ),
     
@@ -77,6 +77,9 @@ ui <- fluidPage(
       
       h3("Ranked Parent Sets"),
       tableOutput("ranking_table"),
+      
+      h3("Ranking Status"),
+      textOutput("ranking_status"),
       
       h3("Analysis Status"),
       textOutput("analysis_status"),
@@ -453,12 +456,26 @@ server <- function(input, output, session) {
   })
   
   output$analysis_status <- renderText({
-    "Ready"
+    
+    if (input$run_analysis == 0) {
+      return("No analysis has been run yet.")
+    }
+    
+    paste(input$analysis_type, "analysis completed successfully.")
   })
   
   ranking_results <- eventReactive(input$run_ranking, {
     
+    validate(
+      need(!is.null(analysis_results()), "Please run an analysis before ranking parent sets.")
+    )
+    
     results <- analysis_results()
+    
+    validate(
+      need(all(c("Parent1", "Parent2", "Y", "K") %in% colnames(results)),
+           "The analysis results are not suitable for parent ranking.")
+    )
     
     rank_parent_sets(
       df = results,
@@ -499,6 +516,19 @@ server <- function(input, output, session) {
     }
     
   )
+  
+  output$ranking_status <- renderText({
+    
+    if (input$run_analysis == 0) {
+      return("Please run an analysis before ranking parent sets.")
+    }
+    
+    if (input$run_ranking == 0) {
+      return("Ranking has not been run yet.")
+    }
+    
+    "Ranking complete."
+  })
   
   output$results_table <- renderTable({
     head(analysis_results(), 20)
