@@ -109,6 +109,12 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   
+  analysis_status_text <- reactiveVal("No analysis has been run yet.")
+  
+  ranking_status_text <- reactiveVal(
+    "Please run an analysis before ranking parent sets."
+  )
+  
   uploaded_data <- reactive({
     req(input$rds_file)
     readRDS(input$rds_file$datapath)
@@ -298,6 +304,8 @@ server <- function(input, output, session) {
   })
   
   analysis_results <- eventReactive(input$run_analysis, {
+    analysis_status_text("Running analysis...")
+    ranking_status_text("Please run parent ranking again after this analysis.")
     req(data_valid())
     req(input$analysis_type)
     req(input$trait_mode)
@@ -324,6 +332,10 @@ server <- function(input, output, session) {
           K = data$K
         )
         
+        analysis_status_text(
+          paste(input$analysis_type, "analysis completed successfully.")
+        )
+        
       } else {
         
         Crit <- data.frame(
@@ -336,6 +348,10 @@ server <- function(input, output, session) {
           Criterion = Crit,
           K = data$K,
           Weights = selected_weights()
+        )
+        
+        analysis_status_text(
+          paste(input$analysis_type, "analysis completed successfully.")
         )
       }
       
@@ -356,6 +372,10 @@ server <- function(input, output, session) {
           K = data$K
         )
         
+        analysis_status_text(
+          paste(input$analysis_type, "analysis completed successfully.")
+        )
+        
       } else {
         
         traits <- input$selected_traits
@@ -367,6 +387,10 @@ server <- function(input, output, session) {
           domEff = data$marker_eff[, paste0(traits, "_dom"), drop = FALSE],
           K = data$K,
           Weights = selected_weights()
+        )
+        
+        analysis_status_text(
+          paste(input$analysis_type, "analysis completed successfully.")
         )
       }
       
@@ -391,6 +415,10 @@ server <- function(input, output, session) {
           propSel = input$propSel
         )
         
+        analysis_status_text(
+          paste(input$analysis_type, "analysis completed successfully.")
+        )
+        
       } else {
         
         traits <- input$selected_traits
@@ -403,6 +431,10 @@ server <- function(input, output, session) {
           K = data$K,
           propSel = input$propSel,
           Weights = selected_weights()
+        )
+        
+        analysis_status_text(
+          paste(input$analysis_type, "analysis completed successfully.")
         )
       }
       
@@ -434,6 +466,10 @@ server <- function(input, output, session) {
           Method = input$method
         )
         
+        analysis_status_text(
+          paste(input$analysis_type, "analysis completed successfully.")
+        )
+        
       } else {
         
         traits <- input$selected_traits
@@ -448,6 +484,10 @@ server <- function(input, output, session) {
           propSel = input$propSel,
           Weights = selected_weights(),
           Method = input$method
+        )
+        
+        analysis_status_text(
+          paste(input$analysis_type, "analysis completed successfully.")
         )
       }
       
@@ -500,35 +540,47 @@ server <- function(input, output, session) {
     
   })
   
-  output$analysis_status <- renderText({
-    
-    if (input$run_analysis == 0) {
-      return("No analysis has been run yet.")
-    }
-    
-    paste(input$analysis_type, "analysis completed successfully.")
+    output$analysis_status <- renderText({
+      analysis_status_text()
   })
   
-  ranking_results <- eventReactive(input$run_ranking, {
-    
-    validate(
-      need(!is.null(analysis_results()), "Please run an analysis before ranking parent sets.")
-    )
-    
-    results <- analysis_results()
-    
-    validate(
-      need(all(c("Parent1", "Parent2", "Y", "K") %in% colnames(results)),
-           "The analysis results are not suitable for parent ranking.")
-    )
-    
-    rank_parent_sets(
-      df = results,
-      number_of_parents = input$number_of_parents,
-      rel_cutoff = input$rel_cutoff
-    )
-    
-  })
+    ranking_results <- eventReactive(input$run_ranking, {
+      
+      validate(
+        need(!is.null(analysis_results()), "Please run an analysis before ranking parent sets.")
+      )
+      
+      results <- analysis_results()
+      
+      validate(
+        need(all(c("Parent1", "Parent2", "Y", "K") %in% colnames(results)),
+             "The analysis results are not suitable for parent ranking.")
+      )
+      
+      ranking_status_text("Ranking parent sets...")
+      
+      ranked <- withProgress(
+        message = "Ranking parent sets...",
+        value = 0,
+        {
+          incProgress(0.2, detail = "Checking parent combinations")
+          
+          ranked_result <- rank_parent_sets(
+            df = results,
+            number_of_parents = input$number_of_parents,
+            rel_cutoff = input$rel_cutoff
+          )
+          
+          incProgress(0.8, detail = "Preparing ranked table")
+          
+          ranked_result
+        }
+      )
+      
+      ranking_status_text("Ranking complete.")
+      
+      ranked
+    })
   
   output$download_results <- downloadHandler(
     
@@ -575,16 +627,7 @@ server <- function(input, output, session) {
   )
   
   output$ranking_status <- renderText({
-    
-    if (input$run_analysis == 0) {
-      return("Please run an analysis before ranking parent sets.")
-    }
-    
-    if (input$run_ranking == 0) {
-      return("Ranking has not been run yet.")
-    }
-    
-    "Ranking complete."
+    ranking_status_text()
   })
   
   output$results_table <- renderTable({
