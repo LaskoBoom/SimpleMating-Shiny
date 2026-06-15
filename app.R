@@ -18,21 +18,27 @@ ui <- fluidPage(
     
     sidebarPanel(
       
+      h3("Step 1: Load Data"),
       fileInput("rds_file", "Upload SimpleMating RDS file", accept = ".rds"),
       
+      hr(),
+      
+      h3("Step 2: Configure Analysis"),
       uiOutput("analysis_ui"),
       uiOutput("trait_ui"),
       uiOutput("weights_ui"),
       uiOutput("propsel_ui"),
       uiOutput("method_ui"),
       
-      actionButton("run_analysis", "Run Analysis"),
+      hr(),
       
-      downloadButton("download_results", "Download Analysis Results"),
+      h3("Step 3: Run Analysis"),
+      actionButton("run_analysis", "Run Analysis"),
+      uiOutput("download_results_ui"),
       
       hr(),
       
-      h4("Parent Ranking"),
+      h3("Step 4: Rank Parent Sets"),
       
       numericInput(
         "number_of_parents",
@@ -53,40 +59,53 @@ ui <- fluidPage(
       ),
       
       actionButton("run_ranking", "Rank Parent Sets"),
-      
-      downloadButton("download_ranking", "Download Ranked Parent Sets")
+      uiOutput("download_ranking_ui")
       
     ),
     
     mainPanel(
       
-      h3("Data Check"),
-      verbatimTextOutput("data_check"),
+      tabsetPanel(
+        
+        tabPanel(
+          "Results",
+          h3("Analysis Results"),
+          tableOutput("results_table"),
+          h3("Analysis Status"),
+          textOutput("analysis_status")
+        ),
+        
+        tabPanel(
+          "Parent Ranking",
+          h3("Ranked Parent Sets"),
+          tableOutput("ranking_table"),
+          h3("Ranking Status"),
+          textOutput("ranking_status")
+        ),
+        
+        tabPanel(
+          "Data Check",
+          h3("Data Check"),
+          verbatimTextOutput("data_check")
+        ),
+        
+        tabPanel(
+          "Selections",
+          h3("Selected Analysis"),
+          textOutput("selected_analysis"),
+          h3("Selected Traits"),
+          textOutput("selected_traits"),
+          h3("Weights Check"),
+          textOutput("weights_check")
+        )
+        
+    )
       
-      h3("Selected Analysis"),
-      textOutput("selected_analysis"),
-      
-      h3("Selected Traits"),
-      textOutput("selected_traits"),
-      
-      h3("Weights Check"),
-      textOutput("weights_check"),
-      
-      h3("Results"),
-      tableOutput("results_table"),
-      
-      h3("Ranked Parent Sets"),
-      tableOutput("ranking_table"),
-      
-      h3("Ranking Status"),
-      textOutput("ranking_status"),
-      
-      h3("Analysis Status"),
-      textOutput("analysis_status"),
+)
       
     )
   )
-)
+
 
 server <- function(input, output, session) {
   
@@ -455,6 +474,32 @@ server <- function(input, output, session) {
     paste("Selected traits:", paste(input$selected_traits, collapse = ", "))
   })
   
+  output$download_results_ui <- renderUI({
+    
+    if (input$run_analysis == 0) {
+      return(NULL)
+    }
+    
+    downloadButton(
+      "download_results",
+      "Download Analysis Results"
+    )
+    
+  })
+  
+  output$download_ranking_ui <- renderUI({
+    
+    if (input$run_ranking == 0) {
+      return(NULL)
+    }
+    
+    downloadButton(
+      "download_ranking",
+      "Download Ranked Parent Sets"
+    )
+    
+  })
+  
   output$analysis_status <- renderText({
     
     if (input$run_analysis == 0) {
@@ -492,6 +537,12 @@ server <- function(input, output, session) {
     },
     
     content = function(file) {
+      
+      validate(
+        need(input$run_analysis > 0,
+             "Please run an analysis before downloading results.")
+      )
+      
       write.csv(
         analysis_results(),
         file,
@@ -508,6 +559,12 @@ server <- function(input, output, session) {
     },
     
     content = function(file) {
+      
+      validate(
+        need(input$run_ranking > 0,
+             "Please run parent ranking before downloading ranking results.")
+      )
+      
       write.csv(
         ranking_results(),
         file,
