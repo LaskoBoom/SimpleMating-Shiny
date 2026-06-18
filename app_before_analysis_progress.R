@@ -90,12 +90,6 @@ ui <- fluidPage(
         ),
         
         tabPanel(
-          "Analysis Summary",
-          h3("Analysis Summary"),
-          verbatimTextOutput("analysis_summary")
-        ),
-        
-        tabPanel(
           "Selections",
           h3("Selected Analysis"),
           textOutput("selected_analysis"),
@@ -310,15 +304,8 @@ server <- function(input, output, session) {
   })
   
   analysis_results <- eventReactive(input$run_analysis, {
-    
     analysis_status_text("Running analysis...")
     ranking_status_text("Please run parent ranking again after this analysis.")
-    
-    withProgress(
-      message = "Running analysis...",
-      value = 0,
-      {
-    
     req(data_valid())
     req(input$analysis_type)
     req(input$trait_mode)
@@ -508,8 +495,6 @@ server <- function(input, output, session) {
     }
     
     data.frame(Message = "This analysis type is not connected yet.")
-      }
-    )
   })
   
   output$selected_analysis <- renderText({
@@ -527,51 +512,6 @@ server <- function(input, output, session) {
   output$selected_traits <- renderText({
     req(input$selected_traits)
     paste("Selected traits:", paste(input$selected_traits, collapse = ", "))
-  })
-  
-  output$analysis_summary <- renderPrint({
-    
-    req(input$run_analysis > 0)
-    
-    results <- analysis_results()
-    
-    cat("Analysis Type:", input$analysis_type, "\n")
-    cat("Trait Mode:", input$trait_mode, "\n")
-    cat("Selected Traits:", paste(input$selected_traits, collapse = ", "), "\n")
-    
-    if (input$trait_mode == "Multi Trait") {
-      cat("Weights:", paste(selected_weights(), collapse = ", "), "\n")
-    }
-    
-    if (input$analysis_type %in% c(
-      "Usefulness Additive",
-      "Usefulness Additive + Dominance"
-    )) {
-      cat("Proportion Selected:", input$propSel, "\n")
-    }
-    
-    if (input$analysis_type == "Usefulness Additive + Dominance") {
-      cat("Method:", input$method, "\n")
-    }
-    
-    cat("Number of crosses evaluated:", nrow(results), "\n")
-    
-    top_cross <- results[which.max(results$Y), ]
-    
-    cat(
-      "Top Cross:",
-      top_cross$Parent1,
-      "×",
-      top_cross$Parent2,
-      "\n"
-    )
-    
-    cat(
-      "Best Score:",
-      round(max(results$Y), 5),
-      "\n"
-    )
-    
   })
   
   output$download_results_ui <- renderUI({
