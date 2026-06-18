@@ -2,6 +2,7 @@ library(shiny)
 library(SimpleMating)
 library(dplyr)
 library(purrr)
+library(DT)
 
 source("R/ranking_functions.R")
 
@@ -70,7 +71,7 @@ ui <- fluidPage(
         tabPanel(
           "Results",
           h3("Analysis Results"),
-          tableOutput("results_table"),
+          DTOutput("results_table"),
           h3("Analysis Status"),
           textOutput("analysis_status")
         ),
@@ -78,7 +79,7 @@ ui <- fluidPage(
         tabPanel(
           "Parent Ranking",
           h3("Ranked Parent Sets"),
-          tableOutput("ranking_table"),
+          DTOutput("ranking_table"),
           h3("Ranking Status"),
           textOutput("ranking_status")
         ),
@@ -535,6 +536,11 @@ server <- function(input, output, session) {
     
     results <- analysis_results()
     
+    best_row <- results[which.max(results$Y), ]
+    worst_row <- results[which.min(results$Y), ]
+    
+    cat("ANALYSIS SETTINGS\n")
+    cat("-----------------\n")
     cat("Analysis Type:", input$analysis_type, "\n")
     cat("Trait Mode:", input$trait_mode, "\n")
     cat("Selected Traits:", paste(input$selected_traits, collapse = ", "), "\n")
@@ -554,23 +560,32 @@ server <- function(input, output, session) {
       cat("Method:", input$method, "\n")
     }
     
+    cat("\nRESULTS OVERVIEW\n")
+    cat("----------------\n")
     cat("Number of crosses evaluated:", nrow(results), "\n")
+    cat("Best Score:", round(max(results$Y, na.rm = TRUE), 5), "\n")
+    cat("Average Score:", round(mean(results$Y, na.rm = TRUE), 5), "\n")
+    cat("Worst Score:", round(min(results$Y, na.rm = TRUE), 5), "\n")
     
-    top_cross <- results[which.max(results$Y), ]
+    cat("\nBEST CROSS\n")
+    cat("----------\n")
+    cat("Parent 1:", best_row$Parent1, "\n")
+    cat("Parent 2:", best_row$Parent2, "\n")
+    cat("Score:", round(best_row$Y, 5), "\n")
+    cat("Relationship K:", round(best_row$K, 5), "\n")
     
-    cat(
-      "Top Cross:",
-      top_cross$Parent1,
-      "×",
-      top_cross$Parent2,
-      "\n"
-    )
+    cat("\nWORST CROSS\n")
+    cat("-----------\n")
+    cat("Parent 1:", worst_row$Parent1, "\n")
+    cat("Parent 2:", worst_row$Parent2, "\n")
+    cat("Score:", round(worst_row$Y, 5), "\n")
+    cat("Relationship K:", round(worst_row$K, 5), "\n")
     
-    cat(
-      "Best Score:",
-      round(max(results$Y), 5),
-      "\n"
-    )
+    cat("\nRELATIONSHIP SUMMARY\n")
+    cat("--------------------\n")
+    cat("Average K:", round(mean(results$K, na.rm = TRUE), 5), "\n")
+    cat("Minimum K:", round(min(results$K, na.rm = TRUE), 5), "\n")
+    cat("Maximum K:", round(max(results$K, na.rm = TRUE), 5), "\n")
     
   })
   
@@ -690,12 +705,18 @@ server <- function(input, output, session) {
     ranking_status_text()
   })
   
-  output$results_table <- renderTable({
-    head(analysis_results(), 20)
+  output$results_table <- renderDT({
+    datatable(
+      analysis_results(),
+      options = list(pageLength = 20, scrollX = TRUE)
+    )
   })
   
-  output$ranking_table <- renderTable({
-    head(ranking_results(), 20)
+  output$ranking_table <- renderDT({
+    datatable(
+      ranking_results(),
+      options = list(pageLength = 20, scrollX = TRUE)
+    )
   })
 }
 
