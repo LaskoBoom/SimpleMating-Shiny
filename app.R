@@ -3,6 +3,7 @@ library(SimpleMating)
 library(dplyr)
 library(purrr)
 library(DT)
+library(openxlsx)
 
 source("R/ranking_functions.R")
 
@@ -33,34 +34,18 @@ ui <- fluidPage(
       
       hr(),
       
-      h3("Step 3: Run Analysis"),
-      actionButton("run_analysis", "Run Analysis"),
+      uiOutput("run_analysis_ui"),
       uiOutput("download_results_ui"),
+      
+      uiOutput("parent_ranking_ui"),
       
       hr(),
       
-      h3("Step 4: Rank Parent Sets"),
+      h3("Step 5: Export Results"),
       
-      numericInput(
-        "number_of_parents",
-        "Number of Parents",
-        value = 5,
-        min = 3,
-        max = 5,
-        step = 1
-      ),
-      
-      numericInput(
-        "rel_cutoff",
-        "Relationship Cutoff",
-        value = 0,
-        min = 0,
-        max = 1,
-        step = 0.01
-      ),
-      
-      actionButton("run_ranking", "Rank Parent Sets"),
-      uiOutput("download_ranking_ui")
+      uiOutput("download_results_ui"),
+      uiOutput("download_ranking_ui"),
+      uiOutput("download_excel_ui")
       
     ),
     
@@ -591,7 +576,7 @@ server <- function(input, output, session) {
   
   output$download_results_ui <- renderUI({
     
-    if (input$run_analysis == 0) {
+    if (is.null(input$run_analysis) || input$run_analysis == 0) {
       return(NULL)
     }
     
@@ -604,7 +589,7 @@ server <- function(input, output, session) {
   
   output$download_ranking_ui <- renderUI({
     
-    if (input$run_ranking == 0) {
+    if (is.null(input$run_ranking) || input$run_ranking == 0) {
       return(NULL)
     }
     
@@ -613,6 +598,69 @@ server <- function(input, output, session) {
       "Download Ranked Parent Sets"
     )
     
+  })
+  
+  output$download_excel_ui <- renderUI({
+    
+    if (is.null(input$run_analysis) || input$run_analysis == 0) {
+      return(NULL)
+    }
+    
+    downloadButton(
+      "download_excel",
+      "Download Excel Workbook"
+    )
+    
+  })
+  
+  output$run_analysis_ui <- renderUI({
+    
+    req(data_valid())
+    
+    tagList(
+      h3("Step 3: Run Analysis"),
+      actionButton(
+        "run_analysis",
+        "Run Analysis"
+      )
+    )
+    
+  })
+  
+  output$parent_ranking_ui <- renderUI({
+    
+    if (is.null(input$run_analysis) || input$run_analysis == 0) {
+      return(NULL)
+    }
+    
+    tagList(
+      hr(),
+      
+      h3("Step 4: Rank Parent Sets"),
+      
+      numericInput(
+        "number_of_parents",
+        "Number of Parents",
+        value = 5,
+        min = 3,
+        max = 5,
+        step = 1
+      ),
+      
+      numericInput(
+        "rel_cutoff",
+        "Relationship Cutoff",
+        value = 0,
+        min = 0,
+        max = 1,
+        step = 0.01
+      ),
+      
+      actionButton(
+        "run_ranking",
+        "Rank Parent Sets"
+      )
+    )
   })
   
     output$analysis_status <- renderText({
@@ -699,6 +747,59 @@ server <- function(input, output, session) {
       )
     }
     
+  )
+  
+  output$download_excel <- downloadHandler(
+    
+    filename = function() {
+      paste0("SimpleMating_results_", Sys.Date(), ".xlsx")
+    },
+    
+    content = function(file) {
+      
+      wb <- createWorkbook()
+      
+      addWorksheet(wb, "Analysis_Results")
+      writeData(wb, "Analysis_Results", analysis_results())
+      
+      if (input$run_ranking > 0) {
+        addWorksheet(wb, "Parent_Rankings")
+        writeData(wb, "Parent_Rankings", ranking_results())
+      }
+      
+      results <- analysis_results()
+      best_row <- results[which.max(results$Y), ]
+      
+      summary_df <- data.frame(
+        Item = c(
+          "Analysis Type",
+          "Trait Mode",
+          "Selected Traits",
+          "Crosses Evaluated",
+          "Best Parent 1",
+          "Best Parent 2",
+          "Best Score",
+          "Average Score",
+          "Worst Score"
+        ),
+        Value = c(
+          input$analysis_type,
+          input$trait_mode,
+          paste(input$selected_traits, collapse = ", "),
+          nrow(results),
+          best_row$Parent1,
+          best_row$Parent2,
+          round(max(results$Y, na.rm = TRUE), 5),
+          round(mean(results$Y, na.rm = TRUE), 5),
+          round(min(results$Y, na.rm = TRUE), 5)
+        )
+      )
+      
+      addWorksheet(wb, "Analysis_Summary")
+      writeData(wb, "Analysis_Summary", summary_df)
+      
+      saveWorkbook(wb, file, overwrite = TRUE)
+    }
   )
   
   output$ranking_status <- renderText({
