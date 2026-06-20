@@ -48,6 +48,7 @@ ui <- fluidPage(
       hr(),
       
       uiOutput("run_analysis_ui"),
+      uiOutput("download_results_ui"),
       
       uiOutput("parent_ranking_ui"),
       
@@ -377,7 +378,7 @@ server <- function(input, output, session) {
   analysis_results <- eventReactive(input$run_analysis, {
     
     analysis_status_text("Running analysis...")
-    ranking_status_text("Run parent ranking to view ranked parent sets.")
+    ranking_status_text("Please run parent ranking again after this analysis.")
     
     withProgress(
       message = "Running analysis...",
@@ -431,7 +432,6 @@ server <- function(input, output, session) {
         analysis_status_text(
           paste(input$analysis_type, "analysis completed successfully.")
         )
-
       }
       
       return(result)
@@ -910,15 +910,6 @@ server <- function(input, output, session) {
   )
   
   output$ranking_status <- renderText({
-    
-    if (is.null(input$run_analysis) || input$run_analysis == 0) {
-      return("Please run an analysis before ranking parent sets.")
-    }
-    
-    if (is.null(input$run_ranking) || input$run_ranking == 0) {
-      return("Run parent ranking to view ranked parent sets.")
-    }
-    
     ranking_status_text()
   })
   
