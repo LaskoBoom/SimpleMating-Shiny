@@ -5,6 +5,8 @@ library(purrr)
 library(DT)
 library(openxlsx)
 
+options(shiny.maxRequestSize = 100 * 1024^2)
+
 source("R/ranking_functions.R")
 
 required_objects <- c(
@@ -21,7 +23,18 @@ ui <- fluidPage(
     sidebarPanel(
       
       h3("Step 1: Load Data"),
-      fileInput("rds_file", "Upload SimpleMating RDS file", accept = ".rds"),
+      
+      radioButtons(
+        "input_mode",
+        "Input Mode",
+        choices = c(
+          "Upload prepared RDS file",
+          "Upload individual data files"
+        ),
+        selected = "Upload prepared RDS file"
+      ),
+      
+      uiOutput("data_upload_ui"),
       
       hr(),
       
@@ -108,8 +121,75 @@ server <- function(input, output, session) {
   )
   
   uploaded_data <- reactive({
-    req(input$rds_file)
-    readRDS(input$rds_file$datapath)
+    
+    req(input$input_mode)
+    
+    if (input$input_mode == "Upload prepared RDS file") {
+      
+      req(input$rds_file)
+      readRDS(input$rds_file$datapath)
+      
+    } else {
+      
+      req(input$pheno_file)
+      req(input$markers_file)
+      req(input$map_file)
+      req(input$k_file)
+      req(input$marker_eff_file)
+      req(input$haplo_file)
+      req(input$crossplan_file)
+      
+      pheno <- read.table(
+        input$pheno_file$datapath,
+        header = TRUE
+      )
+      
+      Markers <- read.table(
+        input$markers_file$datapath,
+        header = TRUE,
+        row.names = 1
+      )
+      Markers <- as.matrix(Markers)
+      
+      map <- read.table(
+        input$map_file$datapath,
+        header = TRUE
+      )
+      
+      K <- read.table(
+        input$k_file$datapath,
+        header = TRUE,
+        row.names = 1
+      )
+      K <- as.matrix(K)
+      
+      marker_eff <- read.table(
+        input$marker_eff_file$datapath,
+        header = TRUE
+      )
+      
+      haplo.mat <- read.table(
+        input$haplo_file$datapath,
+        header = TRUE,
+        row.names = 1
+      )
+      haplo.mat <- as.matrix(haplo.mat)
+      
+      crossPlan <- read.table(
+        input$crossplan_file$datapath,
+        header = TRUE
+      )
+      
+      list(
+        pheno = pheno,
+        haplo.mat = haplo.mat,
+        K = K,
+        crossPlan = crossPlan,
+        map = map,
+        marker_eff = marker_eff,
+        Markers = Markers
+      )
+    }
   })
   
   data_valid <- reactive({
@@ -661,6 +741,33 @@ server <- function(input, output, session) {
         "Rank Parent Sets"
       )
     )
+  })
+  
+  output$data_upload_ui <- renderUI({
+    
+    req(input$input_mode)
+    
+    if (input$input_mode == "Upload prepared RDS file") {
+      
+      fileInput(
+        "rds_file",
+        "Upload SimpleMating RDS file",
+        accept = ".rds"
+      )
+      
+    } else {
+      
+      tagList(
+        fileInput("pheno_file", "Phenotype file", accept = c(".txt", ".csv")),
+        fileInput("markers_file", "Marker matrix file", accept = c(".txt", ".csv")),
+        fileInput("map_file", "Genetic map file", accept = c(".txt", ".csv")),
+        fileInput("k_file", "Relationship matrix file", accept = c(".txt", ".csv")),
+        fileInput("marker_eff_file", "Marker effects file", accept = c(".txt", ".csv")),
+        fileInput("haplo_file", "Haplotype matrix file", accept = c(".txt", ".csv")),
+        fileInput("crossplan_file", "Crossplan file", accept = c(".txt", ".csv"))
+      )
+      
+    }
   })
   
     output$analysis_status <- renderText({
