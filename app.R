@@ -16,7 +16,17 @@ required_objects <- c(
 
 ui <- fluidPage(
   
-  titlePanel("SimpleMating App"),
+  titlePanel(
+    title = tags$div(
+      "SimpleMating",
+      tags$div(
+        style = "font-size: 65%; font-weight: normal; color: #555555; margin-top: 3px; line-height: 1.2;",
+        tags$b("Package:"), " M.A. Peixoto, R.R. Amadeu, L.L. Bhering, L.F.V. Ferrão, P.R. Muñoz, M.F.R. Resende Jr. | ",
+        tags$b("Additional Parent Ranking Code:"), " Leif Skøt | ",
+        tags$b("GUI:"), " Lasse Skøt"
+      )
+    )
+  ),
   
   sidebarLayout(
     
