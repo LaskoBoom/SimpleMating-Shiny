@@ -7,52 +7,11 @@ library(openxlsx)
 
 options(shiny.maxRequestSize = 100 * 1024^2)
 
-if (file.exists("R/ranking_functions.R")) {
-  source("R/ranking_functions.R")
-} else {
-  source("app/R/ranking_functions.R")
-}
+source("R/ranking_functions.R")
 
-base_required_objects <- c(
-  "pheno", "K", "crossPlan"
-)
-
-analysis_required_objects <- function(analysis_type, method = NULL) {
-  
-  if (analysis_type == "MPV") {
-    return(c("pheno", "K", "crossPlan"))
-  }
-  
-  if (analysis_type == "TGV") {
-    return(c("pheno", "K", "crossPlan", "Markers", "marker_eff"))
-  }
-  
-  if (analysis_type == "Usefulness Additive") {
-    return(c("pheno", "K", "crossPlan", "Markers", "marker_eff", "map"))
-  }
-  
-  if (analysis_type == "Usefulness Additive + Dominance") {
-    
-    required <- c("pheno", "K", "crossPlan", "Markers", "marker_eff", "map")
-    
-    if (!is.null(method) && method == "Phased") {
-      required <- c(required, "haplo.mat")
-    }
-    
-    return(required)
-  }
-  
-  character(0)
-}
-
-object_labels <- c(
-  pheno = "Phenotype file",
-  K = "Relationship matrix file",
-  crossPlan = "Crossplan file",
-  Markers = "Marker matrix file",
-  marker_eff = "Marker effects file",
-  map = "Genetic map file",
-  "haplo.mat" = "Haplotype matrix file"
+required_objects <- c(
+  "pheno", "haplo.mat", "K", "crossPlan",
+  "map", "marker_eff", "Markers"
 )
 
 ui <- fluidPage(
@@ -79,14 +38,13 @@ ui <- fluidPage(
         "input_mode",
         "Input Mode",
         choices = c(
-          "Upload individual data files",
-          "Upload prepared RDS file"
+          "Upload prepared RDS file",
+          "Upload individual data files"
         ),
-        selected = "Upload individual data files"
+        selected = "Upload prepared RDS file"
       ),
       
       uiOutput("data_upload_ui"),
-      uiOutput("required_files_ui"),
       
       hr(),
       
@@ -94,7 +52,6 @@ ui <- fluidPage(
       uiOutput("analysis_ui"),
       uiOutput("trait_ui"),
       uiOutput("weights_ui"),
-      uiOutput("marker_effect_ui"),
       uiOutput("propsel_ui"),
       uiOutput("method_ui"),
       
@@ -167,7 +124,7 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   
   session$onSessionEnded(function() {
-    shiny::stopApp()
+    stopApp()
   })
   
   analysis_status_text <- reactiveVal("No analysis has been run yet.")
@@ -187,84 +144,70 @@ server <- function(input, output, session) {
       
     } else {
       
-      data_list <- list()
+      req(input$pheno_file)
+      req(input$markers_file)
+      req(input$map_file)
+      req(input$k_file)
+      req(input$marker_eff_file)
+      req(input$haplo_file)
+      req(input$crossplan_file)
       
-      if (!is.null(input$pheno_file)) {
-        data_list$pheno <- read.table(
-          input$pheno_file$datapath,
-          header = TRUE
-        )
-      }
+      pheno <- read.table(
+        input$pheno_file$datapath,
+        header = TRUE
+      )
       
-      if (!is.null(input$markers_file)) {
-        Markers <- read.table(
-          input$markers_file$datapath,
-          header = TRUE,
-          row.names = 1
-        )
-        data_list$Markers <- as.matrix(Markers)
-      }
+      Markers <- read.table(
+        input$markers_file$datapath,
+        header = TRUE,
+        row.names = 1
+      )
+      Markers <- as.matrix(Markers)
       
-      if (!is.null(input$map_file)) {
-        data_list$map <- read.table(
-          input$map_file$datapath,
-          header = TRUE
-        )
-      }
+      map <- read.table(
+        input$map_file$datapath,
+        header = TRUE
+      )
       
-      if (!is.null(input$k_file)) {
-        K <- read.table(
-          input$k_file$datapath,
-          header = TRUE,
-          row.names = 1
-        )
-        data_list$K <- as.matrix(K)
-      }
+      K <- read.table(
+        input$k_file$datapath,
+        header = TRUE,
+        row.names = 1
+      )
+      K <- as.matrix(K)
       
-      if (!is.null(input$marker_eff_file)) {
-        data_list$marker_eff <- read.table(
-          input$marker_eff_file$datapath,
-          header = TRUE
-        )
-      }
+      marker_eff <- read.table(
+        input$marker_eff_file$datapath,
+        header = TRUE
+      )
       
-      if (!is.null(input$haplo_file)) {
-        haplo.mat <- read.table(
-          input$haplo_file$datapath,
-          header = TRUE,
-          row.names = 1
-        )
-        data_list$haplo.mat <- as.matrix(haplo.mat)
-      }
+      haplo.mat <- read.table(
+        input$haplo_file$datapath,
+        header = TRUE,
+        row.names = 1
+      )
+      haplo.mat <- as.matrix(haplo.mat)
       
-      if (!is.null(input$crossplan_file)) {
-        data_list$crossPlan <- read.table(
-          input$crossplan_file$datapath,
-          header = TRUE
-        )
-      }
+      crossPlan <- read.table(
+        input$crossplan_file$datapath,
+        header = TRUE
+      )
       
-      data_list
+      list(
+        pheno = pheno,
+        haplo.mat = haplo.mat,
+        K = K,
+        crossPlan = crossPlan,
+        map = map,
+        marker_eff = marker_eff,
+        Markers = Markers
+      )
     }
   })
   
   data_valid <- reactive({
     data <- uploaded_data()
-    all(base_required_objects %in% names(data))
-  })
-  
-  analysis_data_valid <- reactive({
-    
-    req(input$analysis_type)
-    
-    data <- uploaded_data()
-    
-    required <- analysis_required_objects(
-      analysis_type = input$analysis_type,
-      method = input$method
-    )
-    
-    all(required %in% names(data))
+    all(required_objects %in% names(data))
   })
   
   trait_names <- reactive({
@@ -275,7 +218,7 @@ server <- function(input, output, session) {
   output$data_check <- renderPrint({
     data <- uploaded_data()
     found <- names(data)
-    missing <- setdiff(base_required_objects, found)
+    missing <- setdiff(required_objects, found)
     
     cat("Objects found:\n")
     print(found)
@@ -357,55 +300,6 @@ server <- function(input, output, session) {
           step = 0.01
         )
       })
-    )
-  })
-  
-  output$marker_effect_ui <- renderUI({
-    
-    req(input$analysis_type)
-    
-    if (input$analysis_type == "MPV") {
-      return(NULL)
-    }
-    
-    data <- uploaded_data()
-    
-    if (!"marker_eff" %in% names(data)) {
-      return(NULL)
-    }
-    
-    additive_columns <- grep(
-      "\\.Additive$",
-      colnames(data$marker_eff),
-      value = TRUE
-    )
-    
-    dominance_columns <- grep(
-      "\\.Dominance$",
-      colnames(data$marker_eff),
-      value = TRUE
-    )
-    
-    tagList(
-      h4("Marker Effects"),
-      
-      selectInput(
-        "additive_effects",
-        "Additive marker effects",
-        choices = additive_columns,
-        selected = paste0(input$selected_traits, ".Additive"),
-        multiple = input$trait_mode == "Multi Trait"
-      ),
-      
-      if (input$analysis_type %in% c("TGV", "Usefulness Additive + Dominance")) {
-        selectInput(
-          "dominance_effects",
-          "Dominance marker effects",
-          choices = dominance_columns,
-          selected = paste0(input$selected_traits, ".Dominance"),
-          multiple = input$trait_mode == "Multi Trait"
-        )
-      }
     )
   })
   
@@ -566,8 +460,8 @@ server <- function(input, output, session) {
         result <- getTGV(
           MatePlan = data$crossPlan,
           Markers = data$Markers,
-          addEff = data$marker_eff[, input$additive_effects],
-          domEff = data$marker_eff[, input$dominance_effects],
+          addEff = data$marker_eff[, paste0(trait, "_add")],
+          domEff = data$marker_eff[, paste0(trait, "_dom")],
           K = data$K
         )
         
@@ -582,8 +476,8 @@ server <- function(input, output, session) {
         result <- getTGV(
           MatePlan = data$crossPlan,
           Markers = data$Markers,
-          addEff = data$marker_eff[, input$additive_effects, drop = FALSE],
-          domEff = data$marker_eff[, input$dominance_effects, drop = FALSE],
+          addEff = data$marker_eff[, paste0(traits, "_add"), drop = FALSE],
+          domEff = data$marker_eff[, paste0(traits, "_dom"), drop = FALSE],
           K = data$K,
           Weights = selected_weights()
         )
@@ -608,7 +502,7 @@ server <- function(input, output, session) {
         result <- getUsefA(
           MatePlan = data$crossPlan,
           Markers = Markers_02,
-          addEff = data$marker_eff[, input$additive_effects],
+          addEff = data$marker_eff[, paste0(trait, "_add")],
           Map.In = data$map,
           K = data$K,
           propSel = input$propSel
@@ -625,7 +519,7 @@ server <- function(input, output, session) {
         result <- getUsefA_mt(
           MatePlan = data$crossPlan,
           Markers = Markers_02,
-          addEff = data$marker_eff[, input$additive_effects, drop = FALSE],
+          addEff = data$marker_eff[, paste0(traits, "_add"), drop = FALSE],
           Map.In = data$map,
           K = data$K,
           propSel = input$propSel,
@@ -657,8 +551,8 @@ server <- function(input, output, session) {
         result <- getUsefAD(
           MatePlan = data$crossPlan,
           Markers = marker_source,
-          addEff = data$marker_eff[, input$additive_effects],
-          domEff = data$marker_eff[, input$dominance_effects],
+          addEff = data$marker_eff[, paste0(trait, "_add")],
+          domEff = data$marker_eff[, paste0(trait, "_dom")],
           Map.In = data$map,
           K = data$K,
           propSel = input$propSel,
@@ -676,8 +570,8 @@ server <- function(input, output, session) {
         result <- getUsefAD_mt(
           MatePlan = data$crossPlan,
           Markers = marker_source,
-          addEff = data$marker_eff[, input$additive_effects, drop = FALSE],
-          domEff = data$marker_eff[, input$dominance_effects, drop = FALSE],
+          addEff = data$marker_eff[, paste0(traits, "_add"), drop = FALSE],
+          domEff = data$marker_eff[, paste0(traits, "_dom"), drop = FALSE],
           Map.In = data$map,
           K = data$K,
           propSel = input$propSel,
@@ -816,30 +710,6 @@ server <- function(input, output, session) {
   output$run_analysis_ui <- renderUI({
     
     req(data_valid())
-    req(input$analysis_type)
-    
-    if (!analysis_data_valid()) {
-      
-      data <- uploaded_data()
-      
-      required <- analysis_required_objects(
-        analysis_type = input$analysis_type,
-        method = input$method
-      )
-      
-      missing <- setdiff(required, names(data))
-      missing_labels <- object_labels[missing]
-      
-      return(
-        tagList(
-          h3("Step 3: Run Analysis"),
-          p("Additional files required for this analysis:"),
-          tags$ul(
-            lapply(missing_labels, tags$li)
-          )
-        )
-      )
-    }
     
     tagList(
       h3("Step 3: Run Analysis"),
@@ -867,7 +737,7 @@ server <- function(input, output, session) {
         "Number of Parents",
         value = 5,
         min = 3,
-        max = 6,
+        max = 5,
         step = 1
       ),
       
@@ -884,51 +754,6 @@ server <- function(input, output, session) {
         "run_ranking",
         "Rank Parent Sets"
       )
-    )
-  })
-  
-  output$required_files_ui <- renderUI({
-    
-    req(data_valid())
-    req(input$analysis_type)
-    
-    data <- uploaded_data()
-    
-    required <- analysis_required_objects(
-      analysis_type = input$analysis_type,
-      method = input$method
-    )
-    
-    uploaded <- intersect(required, names(data))
-    missing <- setdiff(required, names(data))
-    
-    uploaded_labels <- object_labels[uploaded]
-    missing_labels <- object_labels[missing]
-    
-    tagList(
-      h4("Files for selected analysis"),
-      
-      if (length(uploaded_labels) > 0) {
-        tagList(
-          tags$b("✓ Already uploaded"),
-          tags$ul(
-            lapply(uploaded_labels, function(label) {
-              tags$li(paste("✓", label))
-            })
-          )
-        )
-      },
-      
-      if (length(missing_labels) > 0) {
-        tagList(
-          tags$b("Additional files required"),
-          tags$ul(
-            lapply(missing_labels, tags$li)
-          )
-        )
-      } else {
-        tags$p("✓ All required files have been uploaded.")
-      }
     )
   })
   
@@ -1126,7 +951,4 @@ server <- function(input, output, session) {
   })
 }
 
-shiny::runApp(
-  shinyApp(ui, server),
-  launch.browser = TRUE
-)
+shinyApp(ui, server)
