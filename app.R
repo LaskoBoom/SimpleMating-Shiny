@@ -164,10 +164,19 @@ ui <- fluidPage(
   )
 
 
+.app_session_count <- 0
+
 server <- function(input, output, session) {
   
+  .app_session_count <<- .app_session_count + 1
+  
   session$onSessionEnded(function() {
-    shiny::stopApp()
+    .app_session_count <<- .app_session_count - 1
+    later::later(function() {
+      if (.app_session_count <= 0) {
+        shiny::stopApp()
+      }
+    }, delay = 3)
   })
   
   analysis_status_text <- reactiveVal("No analysis has been run yet.")
@@ -325,9 +334,9 @@ server <- function(input, output, session) {
     } else {
       selectInput(
         "selected_traits",
-        "Traits",
+        "Traits (select one or more traits)",
         choices = traits,
-        selected = c("DMD", "SY"),
+        selected = character(0),
         multiple = TRUE
       )
     }
@@ -339,8 +348,6 @@ server <- function(input, output, session) {
     if (input$trait_mode != "Multi Trait") {
       return(NULL)
     }
-    
-    req(input$selected_traits)
     
     selected_traits <- input$selected_traits
     default_weight <- round(1 / length(selected_traits), 3)
@@ -496,9 +503,6 @@ server <- function(input, output, session) {
   
   analysis_results <- eventReactive(input$run_analysis, {
     
-    analysis_status_text("Running analysis...")
-    ranking_status_text("Run parent ranking to view ranked parent sets.")
-    
     withProgress(
       message = "Running analysis...",
       value = 0,
@@ -507,7 +511,10 @@ server <- function(input, output, session) {
     req(data_valid())
     req(input$analysis_type)
     req(input$trait_mode)
-    req(input$selected_traits)
+    if (is.null(input$selected_traits) || length(input$selected_traits) == 0) {
+      analysis_status_text("Please select at least one trait before running the analysis.")
+      return(NULL)
+    }
     
     validate(
       need(weights_valid(), "For multi-trait analysis, weights must add up to 1.")
@@ -1126,7 +1133,4 @@ server <- function(input, output, session) {
   })
 }
 
-shiny::runApp(
-  shinyApp(ui, server),
-  launch.browser = TRUE
-)
+shinyApp(ui, server)
