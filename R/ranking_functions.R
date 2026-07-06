@@ -28,7 +28,7 @@ rank_parent_sets <- function(df, number_of_parents = 5, rel_cutoff = 0.0) {
     if (any(is.na(Uvals))) return(NULL)
     
     tibble::tibble(
-      Parents = paste(S, collapse = ","),
+      Parents = paste(S, collapse = " / "),
       Mean = mean(Uvals),
       Min = min(Uvals),
       Max = max(Uvals),

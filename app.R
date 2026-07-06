@@ -97,6 +97,7 @@ ui <- fluidPage(
       uiOutput("marker_effect_ui"),
       uiOutput("propsel_ui"),
       uiOutput("method_ui"),
+      uiOutput("long_analysis_warning_ui"),
       
       hr(),
       
@@ -165,6 +166,7 @@ ui <- fluidPage(
 
 
 .app_session_count <- 0
+.analysis_running <- FALSE
 
 server <- function(input, output, session) {
   
@@ -172,8 +174,9 @@ server <- function(input, output, session) {
   
   session$onSessionEnded(function() {
     .app_session_count <<- .app_session_count - 1
+    
     later::later(function() {
-      if (.app_session_count <= 0) {
+      if (.app_session_count <= 0 && !.analysis_running) {
         shiny::stopApp()
       }
     }, delay = 3)
@@ -455,6 +458,18 @@ server <- function(input, output, session) {
     
   })
   
+  output$long_analysis_warning_ui <- renderUI({
+    
+    req(input$analysis_type)
+    
+    if (input$analysis_type == "Usefulness Additive + Dominance") {
+      helpText(
+        "Note: Useful Additive + Dominance analyses can take a long time to complete, potentially 20–45 minutes depending on the dataset and selected options. During this time, the app may appear unresponsive and some tabs may temporarily go blank. Please leave the app open until the analysis has finished."
+      )
+    }
+    
+  })
+  
   selected_weights <- reactive({
     req(input$trait_mode)
     
@@ -502,6 +517,11 @@ server <- function(input, output, session) {
   })
   
   analysis_results <- eventReactive(input$run_analysis, {
+    
+    .analysis_running <<- TRUE
+    on.exit({
+      .analysis_running <<- FALSE
+    }, add = TRUE)
     
     withProgress(
       message = "Running analysis...",
@@ -661,7 +681,7 @@ server <- function(input, output, session) {
         
         trait <- input$selected_traits
         
-        result <- getUsefAD(
+        result <- SimpleMating:::getUsefAD(
           MatePlan = data$crossPlan,
           Markers = marker_source,
           addEff = data$marker_eff[, input$additive_effects],
@@ -680,7 +700,7 @@ server <- function(input, output, session) {
         
         traits <- input$selected_traits
         
-        result <- getUsefAD_mt(
+        result <- SimpleMating:::getUsefAD_mt(
           MatePlan = data$crossPlan,
           Markers = marker_source,
           addEff = data$marker_eff[, input$additive_effects, drop = FALSE],
